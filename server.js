@@ -36,7 +36,7 @@ app.post('/api/create', (req, res) => {
   const token = crypto.randomBytes(16).toString('hex');
   const storedCompartments = compartments.map(c => ({
     text: c.text,
-    password: c.password, // Already SHA-256 hashed on front-end
+    password: c.password,
     viewsLeft: Number(c.views) || 1,
     expiry: c.expiry ? new Date(c.expiry).getTime() : null,
     copy: Boolean(c.copy)
@@ -63,7 +63,6 @@ app.post('/api/reveal', (req, res) => {
     let compartments = JSON.parse(row.compartments);
     const userHash = hashPassword(password);
 
-    // Find compartment matching the provided password hash
     const index = compartments.findIndex(c => c.password === userHash);
     if (index === -1) {
       return res.status(401).json({ error: 'Invalid password.' });
@@ -72,16 +71,13 @@ app.post('/api/reveal', (req, res) => {
     const matched = compartments[index];
     const now = Date.now();
 
-    // Check expiration date
     if (matched.expiry && now > matched.expiry) {
       deleteCompartment(token, compartments, index);
       return res.status(410).json({ error: 'Message has expired.' });
     }
 
-    // Decrement view count
     matched.viewsLeft -= 1;
 
-    // Send payload response
     const responsePayload = {
       text: matched.text,
       expiry: matched.expiry,
@@ -89,10 +85,8 @@ app.post('/api/reveal', (req, res) => {
     };
 
     if (matched.viewsLeft <= 0) {
-      // Burn this compartment from database
       deleteCompartment(token, compartments, index);
     } else {
-      // Save remaining views back to database
       db.run('UPDATE secrets SET compartments = ? WHERE token = ?', [JSON.stringify(compartments), token]);
     }
 
@@ -108,6 +102,11 @@ function deleteCompartment(token, compartments, index) {
     db.run('UPDATE secrets SET compartments = ? WHERE token = ?', [JSON.stringify(compartments), token]);
   }
 }
+
+// Serve message.html for clean subpage URL paths (/message/RANDOM_TOKEN)
+app.get('/message/:token', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'message.html'));
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
